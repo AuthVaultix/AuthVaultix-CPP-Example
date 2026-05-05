@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.png" alt="AuthVaultix Banner" width="100%">
+ <img src="https://authvaultix.com/assets/img/logo.webp" alt="AuthVaultix Logo" width="80" height="80" />
 </p>
 
 <h1 align="center">🛡️ AuthVaultix C++ SDK</h1>

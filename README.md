@@ -116,5 +116,5 @@ int main() {
 This project is licensed under the **Elastic License 2.0**. See the [LICENSE](LICENSE) file for details.
 
 <p align="center">
-  Developed with ❤️ for the Security Community.
+  Developed with ❤️ AURORA_ONE.
 </p>

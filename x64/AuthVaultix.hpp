@@ -92,6 +92,7 @@ namespace AuthVaultix {
         std::string generate_iv();
         bool verify_signature(std::string body, std::string signature, std::string type);
 
+        void load_user_data(const json& info);
         void check_session(const json& j);
         void error(std::string msg);
     };

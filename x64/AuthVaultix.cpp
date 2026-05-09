@@ -62,6 +62,28 @@ namespace AuthVaultix {
         catch (...) { error("Integrity Check Failed"); }
     }
 
+    void AuthVaultixClient::load_user_data(const json& info) {
+        if (info.is_null()) return;
+
+        user_data.username = info.value("username", "");
+        user_data.ip = info.value("ip", "");
+        user_data.hwid = info.value("hwid", "");
+        user_data.createdate = format_date(info.value("createdate", ""));
+        user_data.lastlogin = format_date(info.value("lastlogin", ""));
+
+        user_data.subscriptions.clear();
+        if (info.contains("subscriptions") && info["subscriptions"].is_array()) {
+            for (auto& sub : info["subscriptions"]) {
+                Subscription s;
+                s.name = sub.value("subscription", "");
+                s.key = sub.value("key", "");
+                s.expiry = format_date(sub.value("expiry", ""));
+                s.timeleft = sub.value("timeleft", 0LL);
+                user_data.subscriptions.push_back(s);
+            }
+        }
+    }
+
     bool AuthVaultixClient::login(std::string username, std::string password) {
         if (!is_initialized) { error("Not initialized"); return false; }
 
@@ -93,25 +115,8 @@ namespace AuthVaultix {
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
                 
-                if (j.contains("info") && !j["info"].is_null()) {
-                    auto info = j["info"];
-                    user_data.username = info.value("username", "");
-                    user_data.ip = info.value("ip", "");
-                    user_data.hwid = info.value("hwid", "");
-                    user_data.createdate = format_date(info.value("createdate", ""));
-                    user_data.lastlogin = format_date(info.value("lastlogin", ""));
-
-                    user_data.subscriptions.clear();
-                    if (info.contains("subscriptions") && info["subscriptions"].is_array()) {
-                        for (auto& sub : info["subscriptions"]) {
-                            Subscription s;
-                            s.name = sub.value("subscription", "");
-                            s.key = sub.value("key", "");
-                            s.expiry = format_date(sub.value("expiry", ""));
-                            s.timeleft = sub.value("timeleft", 0LL);
-                            user_data.subscriptions.push_back(s);
-                        }
-                    }
+                if (j.contains("info")) {
+                    load_user_data(j["info"]);
                 }
                 return true;
             }
@@ -152,13 +157,8 @@ namespace AuthVaultix {
 
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
-                if (j.contains("info") && !j["info"].is_null()) {
-                    auto info = j["info"];
-                    user_data.username = info.value("username", "");
-                    user_data.ip = info.value("ip", "");
-                    user_data.hwid = info.value("hwid", "");
-                    user_data.createdate = format_date(info.value("createdate", ""));
-                    user_data.lastlogin = format_date(info.value("lastlogin", ""));
+                if (j.contains("info")) {
+                    load_user_data(j["info"]);
                 }
                 return true;
             }
@@ -194,13 +194,8 @@ namespace AuthVaultix {
 
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
-                if (j.contains("info") && !j["info"].is_null()) {
-                    auto info = j["info"];
-                    user_data.username = info.value("username", "");
-                    user_data.ip = info.value("ip", "");
-                    user_data.hwid = info.value("hwid", "");
-                    user_data.createdate = format_date(info.value("createdate", ""));
-                    user_data.lastlogin = format_date(info.value("lastlogin", ""));
+                if (j.contains("info")) {
+                    load_user_data(j["info"]);
                 }
                 return true;
             }

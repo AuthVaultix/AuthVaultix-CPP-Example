@@ -8,11 +8,13 @@
 using namespace AuthVaultix;
 
 int main() {
+    // copy and paste from https://authvaultix.com/win/app/x and replace these string variables
+    // Please watch tutorial HERE https://youtu.be/0rCVaszXg5k?si=VIPmVfYYfXfQwnyg
     // Application Credentials (Hardened with skCrypt)
-    auto name = skCrypt("c_pluss");
-    auto ownerid = skCrypt("5d36476ca4");
-    auto secret = skCrypt("4d5f30bb36e49ef838f7f65f27cc97d34a4e02ad4b960c2e54881db3d5ed7a99");
-    auto version = skCrypt("1.0");
+    auto name = skCrypt("name"); // App name
+    auto ownerid = skCrypt("ownerid");// Account ID
+    auto secret = skCrypt("");// Secret ID
+    auto version = skCrypt("1.0");// Application version. Used for automatic downloads see video here 
 
     AuthVaultixClient client(name.decrypt(), ownerid.decrypt(), secret.decrypt(), version.decrypt());
 

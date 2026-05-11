@@ -42,39 +42,39 @@ namespace AuthVaultix {
         std::string credential;
     };
 
-    class AuthVaultixClient {
+    class VaultixApp {
     public:
-        AuthVaultixClient(std::string name, std::string ownerid, std::string secret, std::string version);
+        VaultixApp(std::string name, std::string ownerid, std::string secret, std::string version);
 
-        bool init();
-        bool login(std::string username, std::string password);
-        bool register_user(std::string username, std::string password, std::string key, std::string email = "");
-        bool license_login(std::string key);
-        bool check();
-        bool upgrade(std::string username, std::string key);
+        bool connect();
+        bool authenticate(std::string username, std::string password);
+        bool create_account(std::string username, std::string password, std::string key, std::string email = "");
+        bool activate_license(std::string key);
+        bool validate_session();
+        bool upgrade_account(std::string username, std::string key);
 
-        bool log(std::string message);
-        bool ban(std::string reason);
-        void logout();
+        bool send_log(std::string message);
+        bool apply_ban(std::string reason);
+        void terminate_session();
 
-        std::string get_var(std::string varid);
-        bool set_var(std::string varid, std::string value);
-        std::string get_global_var(std::string varid);
+        std::string fetch_user_data(std::string varid);
+        bool update_user_data(std::string varid, std::string value);
+        std::string fetch_global_data(std::string varid);
 
-        bool download_file(std::string fileid, std::vector<unsigned char>& output);
+        bool download_payload(std::string fileid, std::vector<unsigned char>& output);
 
-        bool chat_send(std::string message, std::string channel);
-        std::vector<ChatMessage> chat_fetch(std::string channel);
+        bool send_chat_message(std::string message, std::string channel);
+        std::vector<ChatMessage> fetch_chat_messages(std::string channel);
 
-        std::vector<OnlineUser> fetch_online();
+        std::vector<OnlineUser> get_online_users();
 
-        bool check_blacklist();
-        bool forgot_password(std::string username, std::string email);
+        bool verify_hardware_status();
+        bool reset_password(std::string username, std::string email);
 
         // Properties
-        UserInfo user_data;
-        std::string response_message;
-        bool is_initialized = false;
+        UserInfo active_profile;
+        std::string server_feedback;
+        bool is_connected = false;
 
     private:
         std::string app_name;
@@ -85,15 +85,15 @@ namespace AuthVaultix {
         std::string enc_key;
         std::string api_url = "https://authvaultix.com/api/1.0/";
 
-        std::string request(std::string type, std::vector<std::pair<std::string, std::string>> params);
-        std::string hash_hmac(std::string key, std::string data);
-        std::string get_hwid();
-        std::string get_file_hash();
-        std::string generate_iv();
+        std::string dispatch_payload(std::string type, std::vector<std::pair<std::string, std::string>> params);
+        std::string compute_mac(std::string key, std::string data);
+        std::string obtain_hardware_id();
+        std::string compute_file_checksum();
+        std::string create_entropy_iv();
         bool verify_signature(std::string body, std::string signature, std::string type);
 
-        void load_user_data(const json& info);
-        void check_session(const json& j);
-        void error(std::string msg);
+        void parse_profile_data(const json& info);
+        void verify_server_ack(const json& j);
+        void halt_execution(std::string msg);
     };
 }

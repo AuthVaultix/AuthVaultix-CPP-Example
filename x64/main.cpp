@@ -16,12 +16,13 @@ int main() {
     auto secret = skCrypt("");// Secret ID
     auto version = skCrypt("1.0");// Application version. Used for automatic downloads see video here 
 
-    AuthVaultixClient client(name.decrypt(), ownerid.decrypt(), secret.decrypt(), version.decrypt());
+    VaultixApp client(name.decrypt(), ownerid.decrypt(), secret.decrypt(), version.decrypt());
+
 
     std::cout << "[+] Initializing SDK...\n\n";
 
-    if (!client.init()) {
-        std::cout << "[-] Initialization Error: " << client.response_message << std::endl;
+    if (!client.connect()) {
+        std::cout << "[-] Initialization Error: " << client.server_feedback << std::endl;
         std::system("pause");
         return 1;
     }
@@ -35,25 +36,25 @@ int main() {
         std::string user, pass;
         std::cout << "Username: "; std::cin >> user;
         std::cout << "Password: "; std::cin >> pass;
-        success = client.login(user, pass);
+        success = client.authenticate(user, pass);
     }
     else if (opt == 2) {
         std::string user, pass, key;
         std::cout << "Username: "; std::cin >> user;
         std::cout << "Password: "; std::cin >> pass;
         std::cout << "License Key: "; std::cin >> key;
-        success = client.register_user(user, pass, key);
+        success = client.create_account(user, pass, key);
     }
     else if (opt == 3) {
         std::string key;
         std::cout << "License Key: "; std::cin >> key;
-        success = client.license_login(key);
+        success = client.activate_license(key);
     }
     else if (opt == 4) {
         std::string user, key;
         std::cout << "Username: "; std::cin >> user;
         std::cout << "License Key: "; std::cin >> key;
-        success = client.upgrade(user, key);
+        success = client.upgrade_account(user, key);
         if (success) {
             std::cout << "[+] Upgrade Successful! Please restart the app." << std::endl;
             std::system("pause");
@@ -64,24 +65,24 @@ int main() {
         std::string user, email;
         std::cout << "Username: "; std::cin >> user;
         std::cout << "Email: "; std::cin >> email;
-        success = client.forgot_password(user, email);
+        success = client.reset_password(user, email);
         if (success) {
             std::cout << "[+] Reset Request Sent! Check your email." << std::endl;
         } else {
-            std::cout << "[-] Error: " << client.response_message << std::endl;
+            std::cout << "[-] Error: " << client.server_feedback << std::endl;
         }
         std::system("pause");
         return 0;
     }
 
     if (!success) {
-        std::cout << "[-] Authentication Failed: " << client.response_message << std::endl;
+        std::cout << "[-] Authentication Failed: " << client.server_feedback << std::endl;
         std::system("pause");
         return 1;
     }
 
-    if (!client.user_data.subscriptions.empty()) {
-        auto& sub = client.user_data.subscriptions[0];
+    if (!client.active_profile.subscriptions.empty()) {
+        auto& sub = client.active_profile.subscriptions[0];
 
         long long tl = sub.timeleft;
         long long days = tl / 86400;
@@ -89,19 +90,19 @@ int main() {
         long long mins = (tl % 3600) / 60;
 
         std::cout
-            << "Username: " << client.user_data.username
+            << "Username: " << client.active_profile.username
             << " \n\n Subscription: " << sub.name
-            << " \n IP: " << client.user_data.ip
-            << " \n HWID: " << client.user_data.hwid
+            << " \n IP: " << client.active_profile.ip
+            << " \n HWID: " << client.active_profile.hwid
             << " \n Expiry: " << sub.expiry
-            << " \n Created: " << client.user_data.createdate
-            << " \n Last Login: " << client.user_data.lastlogin
+            << " \n Created: " << client.active_profile.createdate
+            << " \n Last Login: " << client.active_profile.lastlogin
             << " \n Time Left: " << days << "d " << hours << "h " << mins << "m";
     }
 
     std::cout << "\n\nApplication running... (press any key to logout)" << std::endl;
     std::system("pause");
 
-    client.logout();
+    client.terminate_session();
     return 0;
 }

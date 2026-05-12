@@ -56,6 +56,7 @@ namespace AuthVaultix {
         bool send_log(std::string message);
         bool apply_ban(std::string reason);
         void terminate_session();
+        void update_username(std::string new_username);
 
         std::string fetch_user_data(std::string varid);
         bool update_user_data(std::string varid, std::string value);

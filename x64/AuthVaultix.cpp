@@ -473,11 +473,97 @@ namespace AuthVaultix {
         try {
             auto j = json::parse(response);
             verify_server_ack(j);
-            verify_server_ack(j);
             return j["success"];
         }
         catch (...) { halt_execution("Integrity Check Failed"); }
         return false;
+    }
+
+    bool VaultixApp::apply_ban(std::string reason) {
+        if (!is_connected) return false;
+
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "ban"},
+            {"reason", reason},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+
+        std::string response = dispatch_payload("ban", params);
+        try {
+            auto j = json::parse(response);
+            if (j.contains("message"))
+                server_feedback = j["message"].get<std::string>();
+            verify_server_ack(j);
+            
+            bool success = false;
+            if (j.contains("success")) {
+                if (j["success"].is_boolean()) success = j["success"].get<bool>();
+                else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
+            }
+            return success;
+        }
+        catch (...) { halt_execution("Integrity Check Failed"); }
+        return false;
+    }
+
+    void VaultixApp::update_username(std::string new_username) {
+        if (!is_connected) { halt_execution("Not initialized"); return; }
+
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "changeusername"},
+            {"newUsername", new_username},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+
+        std::string response = dispatch_payload("changeusername", params);
+        try {
+            auto j = json::parse(response);
+            if (j.contains("message"))
+                server_feedback = j["message"].get<std::string>();
+            verify_server_ack(j);
+
+            bool success = false;
+            if (j.contains("success")) {
+                if (j["success"].is_boolean()) success = j["success"].get<bool>();
+                else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
+            }
+
+            if (success) {
+                session_id = "";
+                is_connected = false;
+            }
+        }
+        catch (...) { halt_execution("Integrity Check Failed"); }
+    }
+
+    std::vector<OnlineUser> VaultixApp::get_online_users() {
+        std::vector<OnlineUser> users;
+        if (!is_connected) return users;
+
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "fetchonline"},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+
+        std::string response = dispatch_payload("fetchonline", params);
+        try {
+            auto j = json::parse(response);
+            verify_server_ack(j);
+            if (j.contains("users") && j["users"].is_array()) {
+                for (auto& u : j["users"]) {
+                    users.push_back({ u.value("credential", "") });
+                }
+            }
+            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
+        }
+        catch (...) { halt_execution("Integrity Check Failed"); }
+        return users;
     }
 
     std::string VaultixApp::dispatch_payload(std::string type, std::vector<std::pair<std::string, std::string>> params) {

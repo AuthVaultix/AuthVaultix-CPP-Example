@@ -37,6 +37,7 @@ int main() {
         std::cout << "Username: "; std::cin >> user;
         std::cout << "Password: "; std::cin >> pass;
         success = client.authenticate(user, pass);
+        if (success) std::cout << "\n[+] " << client.server_feedback << "\n\n";
     }
     else if (opt == 2) {
         std::string user, pass, key;
@@ -44,11 +45,13 @@ int main() {
         std::cout << "Password: "; std::cin >> pass;
         std::cout << "License Key: "; std::cin >> key;
         success = client.create_account(user, pass, key);
+        if (success) std::cout << "\n[+] " << client.server_feedback << "\n\n";
     }
     else if (opt == 3) {
         std::string key;
         std::cout << "License Key: "; std::cin >> key;
         success = client.activate_license(key);
+        if (success) std::cout << "\n[+] " << client.server_feedback << "\n\n";
     }
     else if (opt == 4) {
         std::string user, key;
@@ -56,7 +59,7 @@ int main() {
         std::cout << "License Key: "; std::cin >> key;
         success = client.upgrade_account(user, key);
         if (success) {
-            std::cout << "[+] Upgrade Successful! Please restart the app." << std::endl;
+            std::cout << "\n[+] " << client.server_feedback << std::endl;
             std::system("pause");
             return 0;
         }
@@ -67,16 +70,16 @@ int main() {
         std::cout << "Email: "; std::cin >> email;
         success = client.reset_password(user, email);
         if (success) {
-            std::cout << "[+] Reset Request Sent! Check your email." << std::endl;
+            std::cout << "\n[+] " << client.server_feedback << std::endl;
         } else {
-            std::cout << "[-] Error: " << client.server_feedback << std::endl;
+            std::cout << "\n[-] Error: " << client.server_feedback << std::endl;
         }
         std::system("pause");
         return 0;
     }
 
     if (!success) {
-        std::cout << "[-] Authentication Failed: " << client.server_feedback << std::endl;
+        std::cout << "\n[-] Error: " << client.server_feedback << std::endl;
         std::system("pause");
         return 1;
     }

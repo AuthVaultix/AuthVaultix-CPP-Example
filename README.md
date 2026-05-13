@@ -20,18 +20,21 @@
 ## 🌟 Key Features
 
 ### 🔐 Robust Authentication
+
 - **Standard Auth**: Secure Login, Registration, and License activation.
 - **Subscription Management**: Seamlessly upgrade user subscriptions with license keys.
 - **Password Recovery**: Integrated "Forgot Password" functionality via email.
 - **Session Integrity**: Server-side session validation to prevent memory tampering.
 
 ### 🛡️ Advanced Security
+
 - **Compile-Time Obfuscation**: Deep integration with `skCrypt` to encrypt strings at compile-time, defeating static analysis and string dumping.
 - **HWID Verification**: SID-based hardware identification that matches production standards, preventing account sharing.
 - **Blacklist Protection**: Built-in checks to automatically block blacklisted users or HWIDs.
 - **Ban System**: Programmatically ban malicious users directly from the client.
 
 ### 📦 Utility & Social
+
 - **Cloud Variables**: Fetch global or user-specific variables stored securely on the server.
 - **Secure File Downloads**: Download protected binaries as Base64-encoded buffers.
 - **Encrypted Chat**: Fetch and send messages in specific channels with role-based visibility.
@@ -42,11 +45,13 @@
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - **Visual Studio 2019** or newer.
 - **C++17 Standard** (Required for `skCrypt` and modern syntax).
 - **Libraries**: `WinHTTP`, `BCrypt`, `Crypt32` (Automatically linked via `#pragma comment`).
 
 ### Installation
+
 1. Clone the repository or download the source files.
 2. Add `AuthVaultix.hpp`, `AuthVaultix.cpp`, and `skCrypt.h` to your project.
 3. Install **nlohmann/json** (Available via NuGet or [GitHub](https://github.com/nlohmann/json)).
@@ -60,6 +65,8 @@
 #include "skCrypt.h"
 #include <iostream>
 
+using namespace AuthVaultix;
+
 int main() {
     // 🛡️ Encrypt credentials at compile-time to hide from crackers
     auto name = skCrypt("Your_App_Name");
@@ -68,30 +75,25 @@ int main() {
     auto version = skCrypt("1.0");
 
     // Initialize the client
-    AuthVaultix::AuthVaultixClient client(
-        name.decrypt(), 
-        ownerid.decrypt(), 
-        secret.decrypt(), 
-        version.decrypt()
-    );
+    VaultixApp client(name.decrypt(), ownerid.decrypt(), secret.decrypt(), version.decrypt());
 
-    if (!client.init()) {
-        std::cout << "❌ Initialization Failed: " << client.response_message << std::endl;
+    if (!client.connect()) {
+        std::cout << "❌ Initialization Failed: " << client.server_feedback << std::endl;
         return 1;
     }
 
     std::cout << "✅ Connected to AuthVaultix!" << std::endl;
 
     // Perform Login
-    if (client.login("user123", "password")) {
-        std::cout << "👋 Welcome, " << client.user_data.username << "!" << std::endl;
-        std::cout << "📅 Created: " << client.user_data.createdate << std::endl;
-        
+    if (client.authenticate("user123", "password")) {
+        std::cout << "👋 Welcome, " << client.active_profile.username << "!" << std::endl;
+        std::cout << "📅 Created: " << client.active_profile.createdate << std::endl;
+
         // Fetch a cloud variable
-        std::string update_url = client.get_global_var("UpdateURL");
+        std::string update_url = client.fetch_global_data("UpdateURL");
         std::cout << "🌐 Server Update URL: " << update_url << std::endl;
     } else {
-        std::cout << "❌ Login Failed: " << client.response_message << std::endl;
+        std::cout << "❌ Login Failed: " << client.server_feedback << std::endl;
     }
 
     return 0;
@@ -106,13 +108,14 @@ int main() {
 > To maintain maximum security for your application, follow these guidelines:
 
 1. **Always use Release mode**: Debug builds contain symbols that make cracking significantly easier.
-2. **String Protection**: Use `skCrypt()` for *every* sensitive string (API Secret, App Name, etc.).
-3. **Control Flow**: Implement server-side checks and use the `client.check()` method periodically.
+2. **String Protection**: Use `skCrypt()` for _every_ sensitive string (API Secret, App Name, etc.).
+3. **Control Flow**: Implement server-side checks and use the `client.validate_session()` method periodically.
 4. **Final Protection**: Use a commercial protector like **VMProtect** or **Themida** on your compiled `.exe` for virtualization and anti-debug layers.
 
 ---
 
 ## 📄 License
+
 This project is licensed under the **Elastic License 2.0**. See the [LICENSE](LICENSE) file for details.
 
 <p align="center">

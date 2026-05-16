@@ -5,10 +5,10 @@
 #include <wincrypt.h>
 #include <Lmcons.h>
 #include <ctime>
+#include <sddl.h>
 
 namespace AuthVaultix {
 
-    // Helper for time formatting
     std::string format_date(std::string unix_timestamp) {
         if (unix_timestamp.empty() || unix_timestamp == "0") return "N/A";
         try {
@@ -23,8 +23,17 @@ namespace AuthVaultix {
     }
 
     void VaultixApp::verify_server_ack(const json& j) {
-        if (!j["success"].get<bool>()) {
-            halt_execution(j["message"].get<std::string>());
+        if (!j.contains("success")) {
+            halt_execution("Invalid Server Response");
+        }
+
+        bool success = false;
+        if (j["success"].is_boolean()) success = j["success"].get<bool>();
+        else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
+        else if (j["success"].is_number()) success = (j["success"].get<int>() == 1);
+
+        if (!success) {
+            halt_execution(j.value("message", "Request Failed"));
         }
     }
 
@@ -34,6 +43,10 @@ namespace AuthVaultix {
 
     bool VaultixApp::connect() {
         if (is_connected) return true;
+
+        auth_verified_ = false;
+        auth_proof_.clear();
+        session_token_.clear();
 
         std::string iv = create_entropy_iv();
         enc_key = iv + "-" + secret;
@@ -53,11 +66,17 @@ namespace AuthVaultix {
         try {
             auto j = json::parse(response);
             verify_server_ack(j);
-            if (j["success"]) {
-                session_id = j["sessionid"];
-                is_connected = true;
-                return true;
+
+            session_id = j["sessionid"];
+            is_connected = true;
+
+            if (j.contains("nonce")) {
+                server_nonce_ = j["nonce"].get<std::string>();
             }
+            else {
+                server_nonce_ = compute_mac(secret, session_id + iv);
+            }
+            return true;
         }
         catch (...) { halt_execution("Integrity Check Failed"); }
         return false;
@@ -88,7 +107,9 @@ namespace AuthVaultix {
     bool VaultixApp::authenticate(std::string username, std::string password) {
         if (!is_connected) { halt_execution("Not initialized"); return false; }
 
+        auth_verified_ = false;
         auto iv = create_entropy_iv();
+
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "login"},
             {"username", username},
@@ -102,11 +123,9 @@ namespace AuthVaultix {
         std::string response = dispatch_payload("login", params);
         try {
             auto j = json::parse(response);
-            
             if (j.contains("message"))
                 server_feedback = j["message"].get<std::string>();
 
-            // Check for success (supports both boolean and string "true")
             bool success = false;
             if (j.contains("success")) {
                 if (j["success"].is_boolean()) success = j["success"].get<bool>();
@@ -115,23 +134,35 @@ namespace AuthVaultix {
 
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
+                if (j.contains("info")) parse_profile_data(j["info"]);
+
                 
-                if (j.contains("info")) {
-                    parse_profile_data(j["info"]);
+                session_token_ = compute_mac(enc_key, session_id + server_nonce_ + username);
+
+                if (j.contains("auth_proof")) {
+                    auth_proof_ = j["auth_proof"].get<std::string>();
                 }
+
+                if (active_profile.username.empty()) {
+                    auth_verified_ = false;
+                    return false;
+                }
+
+                auth_verified_ = true;
                 return true;
             }
         }
         catch (const std::exception& ex) {
             std::cout << "[SDK ERROR] " << ex.what() << std::endl;
         }
+        auth_verified_ = false;
         return false;
     }
 
     bool VaultixApp::create_account(std::string username, std::string password, std::string key, std::string email) {
         if (!is_connected) { halt_execution("Not initialized"); return false; }
+        auth_verified_ = false;
 
-        auto iv = create_entropy_iv();
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "register"},
             {"username", username},
@@ -147,9 +178,8 @@ namespace AuthVaultix {
         std::string response = dispatch_payload("register", params);
         try {
             auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
-            
+            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
+
             bool success = false;
             if (j.contains("success")) {
                 if (j["success"].is_boolean()) success = j["success"].get<bool>();
@@ -158,20 +188,22 @@ namespace AuthVaultix {
 
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
-                if (j.contains("info")) {
-                    parse_profile_data(j["info"]);
-                }
+                if (j.contains("info")) parse_profile_data(j["info"]);
+
+                session_token_ = compute_mac(enc_key, session_id + server_nonce_ + username);
+                auth_verified_ = true;
                 return true;
             }
         }
         catch (...) {}
+        auth_verified_ = false;
         return false;
     }
 
     bool VaultixApp::activate_license(std::string key) {
         if (!is_connected) { halt_execution("Not initialized"); return false; }
+        auth_verified_ = false;
 
-        auto iv = create_entropy_iv();
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "license"},
             {"key", key},
@@ -184,8 +216,7 @@ namespace AuthVaultix {
         std::string response = dispatch_payload("license", params);
         try {
             auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
+            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
 
             bool success = false;
             if (j.contains("success")) {
@@ -195,18 +226,20 @@ namespace AuthVaultix {
 
             if (success) {
                 if (j.contains("sessionid")) session_id = j["sessionid"].get<std::string>();
-                if (j.contains("info")) {
-                    parse_profile_data(j["info"]);
-                }
+                if (j.contains("info")) parse_profile_data(j["info"]);
+
+                session_token_ = compute_mac(enc_key, session_id + server_nonce_ + key);
+                auth_verified_ = true;
                 return true;
             }
         }
         catch (...) {}
+        auth_verified_ = false;
         return false;
     }
 
-    bool VaultixApp::validate_session() {
-        if (!is_connected) { halt_execution("Not initialized"); return false; }
+    bool VaultixApp::validate_session(bool requireAuthenticated) {
+        if (!is_connected || session_id.empty()) return false;
 
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "check"},
@@ -216,14 +249,34 @@ namespace AuthVaultix {
         };
 
         std::string response = dispatch_payload("check", params);
+        if (response.empty()) return false;
+
         try {
             auto j = json::parse(response);
-            server_feedback = j["message"];
-            verify_server_ack(j);
-            return j["success"];
+            server_feedback = j.value("message", "");
+
+            bool success = false;
+            if (j.contains("success")) {
+                if (j["success"].is_boolean()) success = j["success"].get<bool>();
+                else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
+            }
+
+            if (!success) return false;
+
+            if (requireAuthenticated) {
+                bool server_auth = false;
+                if (j.contains("authenticated")) {
+                    if (j["authenticated"].is_boolean()) server_auth = j["authenticated"].get<bool>();
+                    else if (j["authenticated"].is_number()) server_auth = (j["authenticated"].get<int>() == 1);
+                }
+                if (!server_auth) {
+                    server_feedback = "Session not authenticated";
+                    return false;
+                }
+            }
+            return true;
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return false;
+        catch (...) { return false; }
     }
 
     bool VaultixApp::upgrade_account(std::string username, std::string key) {
@@ -241,8 +294,7 @@ namespace AuthVaultix {
         std::string response = dispatch_payload("upgrade", params);
         try {
             auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
+            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
 
             bool success = false;
             if (j.contains("success")) {
@@ -263,14 +315,14 @@ namespace AuthVaultix {
             {"username", username},
             {"email", email},
             {"name", app_name},
-            {"ownerid", owner_id}
+            {"ownerid", owner_id},
+            {"sessionid", session_id}
         };
 
         std::string response = dispatch_payload("forgot", params);
         try {
             auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
+            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
 
             bool success = false;
             if (j.contains("success")) {
@@ -283,24 +335,97 @@ namespace AuthVaultix {
         return false;
     }
 
+    bool VaultixApp::verify_auth_integrity() {
+        if (!is_connected || session_id.empty()) { auth_verified_ = false; return false; }
+
+        if (!validate_session(true)) { auth_verified_ = false; return false; }
+
+        if (active_profile.username.empty()) { auth_verified_ = false; return false; }
+
+        std::string expected_token = compute_mac(enc_key, session_id + server_nonce_ + active_profile.username);
+        if (session_token_ != expected_token) { auth_verified_ = false; return false; }
+
+        auth_verified_ = true;
+        return true;
+    }
+
+    bool VaultixApp::report_tamper(const std::string& reason) {
+        if (!is_connected || session_id.empty()) return false;
+
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "tamper"},
+            {"reason", reason},
+            {"hwid", obtain_hardware_id()},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+
+        dispatch_payload("tamper", params);
+        return true;
+    }
+
+    void VaultixApp::start_heartbeat(int interval_seconds) {
+        if (heartbeat_running_.load()) return;
+        heartbeat_running_.store(true);
+        heartbeat_thread_ = std::thread(&VaultixApp::heartbeat_loop, this, interval_seconds);
+        heartbeat_thread_.detach();
+    }
+
+    void VaultixApp::stop_heartbeat() {
+        heartbeat_running_.store(false);
+    }
+
+    void VaultixApp::heartbeat_loop(int interval_sec) {
+        while (heartbeat_running_.load() && is_connected) {
+            std::this_thread::sleep_for(std::chrono::seconds(interval_sec));
+            if (!heartbeat_running_.load()) break;
+
+            if (!validate_session(auth_verified_)) {
+                halt_execution("Session Integrity Compromised");
+                break;
+            }
+        }
+    }
+
+    void VaultixApp::on_tamper_detected(AntiTamper::TamperType type, const std::string& detail) {
+        report_tamper("[TAMPER_ALARM] " + detail);
+        apply_ban("Security Violation: " + detail);
+        TerminateProcess(GetCurrentProcess(), 0x1337);
+    }
+
+    void VaultixApp::start_protection(int heartbeat_sec, int tamper_check_ms) {
+        char path[MAX_PATH];
+        GetModuleFileNameA(NULL, path, MAX_PATH);
+        anti_tamper.initialize(path);
+
+        start_heartbeat(heartbeat_sec);
+        anti_tamper.start_monitoring([this](AntiTamper::TamperType t, const std::string& d) {
+            on_tamper_detected(t, d);
+            }, tamper_check_ms);
+    }
+
+    void VaultixApp::stop_protection() {
+        stop_heartbeat();
+        anti_tamper.stop_monitoring();
+    }
+
     void VaultixApp::terminate_session() {
         if (!is_connected || session_id.empty()) return;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "logout"},
             {"sessionid", session_id},
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         dispatch_payload("logout", params);
-        session_id = "";
+        session_id.clear();
+        auth_verified_ = false;
         is_connected = false;
     }
 
     std::string VaultixApp::fetch_user_data(std::string varid) {
         if (!is_connected) return "";
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "var"},
             {"varid", varid},
@@ -308,21 +433,17 @@ namespace AuthVaultix {
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("var", params);
         try {
             auto j = json::parse(response);
-            server_feedback = j["message"];
             verify_server_ack(j);
-            if (j["success"]) return j["response"];
+            return j.value("response", "");
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return "";
+        catch (...) { return ""; }
     }
 
     bool VaultixApp::update_user_data(std::string varid, std::string data) {
         if (!is_connected) return false;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "setvar"},
             {"varid", varid},
@@ -331,58 +452,34 @@ namespace AuthVaultix {
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("setvar", params);
         try {
             auto j = json::parse(response);
-            server_feedback = j["message"];
             verify_server_ack(j);
-            return j["success"];
+            return j.value("success", false);
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return false;
+        catch (...) { return false; }
     }
 
     std::string VaultixApp::fetch_global_data(std::string varid) {
         if (!is_connected) return "";
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "getvar"},
             {"varid", varid},
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("getvar", params);
         try {
             auto j = json::parse(response);
-            server_feedback = j["message"];
             verify_server_ack(j);
-            if (j["success"]) return j["message"];
+            return j.value("message", "");
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return "";
-    }
-
-    bool VaultixApp::send_log(std::string msg) {
-        if (!is_connected) return false;
-
-        std::vector<std::pair<std::string, std::string>> params = {
-            {"type", "log"},
-            {"pcname", ""},
-            {"message", msg},
-            {"sessionid", session_id},
-            {"name", app_name},
-            {"ownerid", owner_id}
-        };
-
-        std::string response = dispatch_payload("log", params);
-        return true;
+        catch (...) { return ""; }
     }
 
     bool VaultixApp::download_payload(std::string fileid, std::vector<unsigned char>& output) {
         if (!is_connected) return false;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "file"},
             {"fileid", fileid},
@@ -390,11 +487,10 @@ namespace AuthVaultix {
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("file", params);
         try {
             auto j = json::parse(response);
-            if (j["success"]) {
+            if (j.value("success", false)) {
                 std::string b64 = j["contents"];
                 DWORD dwLen = 0;
                 CryptStringToBinaryA(b64.c_str(), 0, CRYPT_STRING_BASE64, NULL, &dwLen, NULL, NULL);
@@ -404,37 +500,32 @@ namespace AuthVaultix {
             }
             verify_server_ack(j);
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
+        catch (...) {}
         return false;
     }
 
-    bool VaultixApp::send_chat_message(std::string msg, std::string channel) {
+    bool VaultixApp::send_chat_message(std::string message, std::string channel) {
         if (!is_connected) return false;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "chatsend"},
-            {"message", msg},
+            {"message", message},
             {"channel", channel},
             {"sessionid", session_id},
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("chatsend", params);
         try {
             auto j = json::parse(response);
-            server_feedback = j["message"];
             verify_server_ack(j);
-            return j["success"];
+            return j.value("success", false);
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return false;
+        catch (...) { return false; }
     }
 
     std::vector<ChatMessage> VaultixApp::fetch_chat_messages(std::string channel) {
         std::vector<ChatMessage> messages;
         if (!is_connected) return messages;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "chatget"},
             {"channel", channel},
@@ -442,115 +533,29 @@ namespace AuthVaultix {
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("chatget", params);
         try {
             auto j = json::parse(response);
             verify_server_ack(j);
-            if (j["success"] && j.contains("messages") && j["messages"].is_array()) {
+            if (j.contains("messages") && j["messages"].is_array()) {
                 for (auto& m : j["messages"]) {
-                    messages.push_back({ m["author"], m["message"], format_date(m["timestamp"]) });
+                    messages.push_back({ m.value("author", ""), m.value("message", ""), format_date(m.value("timestamp", "")) });
                 }
             }
-            server_feedback = j["message"];
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
+        catch (...) {}
         return messages;
-    }
-
-    bool VaultixApp::verify_hardware_status() {
-        if (!is_connected) return false;
-
-        std::vector<std::pair<std::string, std::string>> params = {
-            {"type", "checkblacklist"},
-            {"hwid", obtain_hardware_id()},
-            {"sessionid", session_id},
-            {"name", app_name},
-            {"ownerid", owner_id}
-        };
-
-        std::string response = dispatch_payload("checkblacklist", params);
-        try {
-            auto j = json::parse(response);
-            verify_server_ack(j);
-            return j["success"];
-        }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return false;
-    }
-
-    bool VaultixApp::apply_ban(std::string reason) {
-        if (!is_connected) return false;
-
-        std::vector<std::pair<std::string, std::string>> params = {
-            {"type", "ban"},
-            {"reason", reason},
-            {"sessionid", session_id},
-            {"name", app_name},
-            {"ownerid", owner_id}
-        };
-
-        std::string response = dispatch_payload("ban", params);
-        try {
-            auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
-            verify_server_ack(j);
-            
-            bool success = false;
-            if (j.contains("success")) {
-                if (j["success"].is_boolean()) success = j["success"].get<bool>();
-                else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
-            }
-            return success;
-        }
-        catch (...) { halt_execution("Integrity Check Failed"); }
-        return false;
-    }
-
-    void VaultixApp::update_username(std::string new_username) {
-        if (!is_connected) { halt_execution("Not initialized"); return; }
-
-        std::vector<std::pair<std::string, std::string>> params = {
-            {"type", "changeusername"},
-            {"newUsername", new_username},
-            {"sessionid", session_id},
-            {"name", app_name},
-            {"ownerid", owner_id}
-        };
-
-        std::string response = dispatch_payload("changeusername", params);
-        try {
-            auto j = json::parse(response);
-            if (j.contains("message"))
-                server_feedback = j["message"].get<std::string>();
-            verify_server_ack(j);
-
-            bool success = false;
-            if (j.contains("success")) {
-                if (j["success"].is_boolean()) success = j["success"].get<bool>();
-                else if (j["success"].is_string()) success = (j["success"].get<std::string>() == "true");
-            }
-
-            if (success) {
-                session_id = "";
-                is_connected = false;
-            }
-        }
-        catch (...) { halt_execution("Integrity Check Failed"); }
     }
 
     std::vector<OnlineUser> VaultixApp::get_online_users() {
         std::vector<OnlineUser> users;
         if (!is_connected) return users;
-
         std::vector<std::pair<std::string, std::string>> params = {
             {"type", "fetchonline"},
             {"sessionid", session_id},
             {"name", app_name},
             {"ownerid", owner_id}
         };
-
         std::string response = dispatch_payload("fetchonline", params);
         try {
             auto j = json::parse(response);
@@ -560,10 +565,76 @@ namespace AuthVaultix {
                     users.push_back({ u.value("credential", "") });
                 }
             }
-            if (j.contains("message")) server_feedback = j["message"].get<std::string>();
         }
-        catch (...) { halt_execution("Integrity Check Failed"); }
+        catch (...) {}
         return users;
+    }
+
+    void VaultixApp::update_username(std::string new_username) {
+        if (!is_connected) return;
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "changeusername"},
+            {"newUsername", new_username},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+        std::string response = dispatch_payload("changeusername", params);
+        try {
+            auto j = json::parse(response);
+            verify_server_ack(j);
+            is_connected = false; 
+        }
+        catch (...) {}
+    }
+
+    bool VaultixApp::verify_hardware_status() {
+        if (!is_connected) return false;
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "checkblacklist"},
+            {"hwid", obtain_hardware_id()},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+        std::string response = dispatch_payload("checkblacklist", params);
+        try {
+            auto j = json::parse(response);
+            return j.value("success", false);
+        }
+        catch (...) { return false; }
+    }
+
+    bool VaultixApp::apply_ban(std::string reason) {
+        if (!is_connected) return false;
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "ban"},
+            {"reason", reason},
+            {"sessionid", session_id},
+            {"hwid", obtain_hardware_id()},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+        std::string response = dispatch_payload("ban", params);
+        try {
+            auto j = json::parse(response);
+            return j.value("success", false);
+        }
+        catch (...) { return false; }
+    }
+
+    bool VaultixApp::send_log(std::string message) {
+        if (!is_connected) return false;
+        std::vector<std::pair<std::string, std::string>> params = {
+            {"type", "log"},
+            {"pcname", ""},
+            {"message", message},
+            {"sessionid", session_id},
+            {"name", app_name},
+            {"ownerid", owner_id}
+        };
+        dispatch_payload("log", params);
+        return true;
     }
 
     std::string VaultixApp::dispatch_payload(std::string type, std::vector<std::pair<std::string, std::string>> params) {
@@ -573,7 +644,8 @@ namespace AuthVaultix {
         HINTERNET hConnect = WinHttpConnect(hSession, L"authvaultix.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
         if (!hConnect) { WinHttpCloseHandle(hSession); return ""; }
 
-        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", L"/api/v1/", NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", L"/api/1.0/", NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
         if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return ""; }
 
         std::string body;
@@ -604,7 +676,6 @@ namespace AuthVaultix {
         WinHttpCloseHandle(hRequest);
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-
         return result;
     }
 
@@ -612,27 +683,20 @@ namespace AuthVaultix {
         BCRYPT_ALG_HANDLE hAlg = NULL;
         BCRYPT_HASH_HANDLE hHash = NULL;
         BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG);
-
         DWORD cbHashObject = 0, cbHash = 0, cbData = 0;
         BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&cbHashObject, sizeof(DWORD), &cbData, 0);
         BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH, (PBYTE)&cbHash, sizeof(DWORD), &cbData, 0);
-
         std::vector<BYTE> hashObject(cbHashObject);
         std::vector<BYTE> hash(cbHash);
-
         BCryptCreateHash(hAlg, &hHash, hashObject.data(), cbHashObject, (PBYTE)key.c_str(), (ULONG)key.length(), 0);
         BCryptHashData(hHash, (PBYTE)body.c_str(), (ULONG)body.length(), 0);
         BCryptFinishHash(hHash, hash.data(), cbHash, 0);
-
         BCryptDestroyHash(hHash);
         BCryptCloseAlgorithmProvider(hAlg, 0);
-
         std::stringstream ss;
         for (BYTE b : hash) ss << std::hex << std::setw(2) << std::setfill('0') << (int)b;
         return ss.str();
     }
-
-#include <sddl.h>
 
     std::string VaultixApp::obtain_hardware_id() {
         char machine[MAX_COMPUTERNAME_LENGTH + 1];
@@ -704,7 +768,7 @@ namespace AuthVaultix {
     }
 
     void VaultixApp::halt_execution(std::string msg) {
-        MessageBoxA(NULL, msg.c_str(), "AuthVaultix Error", MB_ICONERROR);
+        MessageBoxA(NULL, msg.c_str(), "AuthVaultix Security", MB_ICONERROR);
         exit(0);
     }
 }

@@ -6,7 +6,7 @@
 
 namespace skc
 {
-    // Detect Hardware Breakpoints (DR0-DR3)
+
     __forceinline bool check_hw_breakpoints()
     {
         CONTEXT ctx = { 0 };
@@ -18,7 +18,7 @@ namespace skc
         return false;
     }
 
-    // Advanced Anti-Debug (PEB + HW BPs)
+
     __forceinline bool check_debugger()
     {
 #ifdef _WIN64
@@ -44,7 +44,7 @@ namespace skc
 
         __forceinline std::string decrypt()
         {
-            // Junk code to bloat disassembly
+
             float junk_math = 1337.0f;
             for (int i = 0; i < 5; i++) junk_math = (junk_math * i) / (i + 1);
             if (junk_math < -1.0f) return "error";
@@ -53,7 +53,7 @@ namespace skc
             char k2 = K2;
             char k3 = K3;
 
-            // SABOTAGE keys if debugger is detected
+
             if (check_debugger())
             {
                 k1 ^= 0x33;
@@ -72,7 +72,7 @@ namespace skc
                 output.push_back(c);
             }
 
-            // SELF-DESTRUCTION (Memory Wipe)
+
             for (std::size_t i = 0; i < N; i++)
             {
                 const_cast<char&>(_storage[i]) = 0x00;
@@ -83,7 +83,7 @@ namespace skc
     };
 }
 
-// Generate 3 unique compile-time keys
+
 #define skCrypt(str) skc::sk_string<sizeof(str), \
     static_cast<char>((__TIME__[7] * 127) ^ 0xAD), \
     static_cast<char>((__TIME__[4] * 103) ^ 0x77), \

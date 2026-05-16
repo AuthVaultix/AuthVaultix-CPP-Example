@@ -24,14 +24,16 @@
 - **Standard Auth**: Secure Login, Registration, and License activation.
 - **Subscription Management**: Seamlessly upgrade user subscriptions with license keys.
 - **Password Recovery**: Integrated "Forgot Password" functionality via email.
-- **Session Integrity**: Server-side session validation to prevent memory tampering.
+- **Session Integrity**: Server-side session validation and continuous heartbeat monitoring.
 
 ### 🛡️ Advanced Security
 
+- **Continuous Anti-Tamper Monitoring**: Background thread detects debuggers, suspicious tools (x64dbg, Cheat Engine), and DLL injection in real-time.
+- **Smart Module Whitelisting**: Advanced detection logic that whitelists legitimate Windows system modules (like `kernel.appcore.dll`) to eliminate false positives.
 - **Compile-Time Obfuscation**: Deep integration with `skCrypt` to encrypt strings at compile-time, defeating static analysis and string dumping.
 - **HWID Verification**: SID-based hardware identification that matches production standards, preventing account sharing.
-- **Blacklist Protection**: Built-in checks to automatically block blacklisted users or HWIDs.
-- **Ban System**: Programmatically ban malicious users directly from the client.
+- **Hardened IP Detection**: Cloudflare-aware IP capturing in the backend (`init.php`, `login.php`, `tamper.php`) to ensure real client identification even through proxies.
+- **Auto-Ban System**: Automatically bans HWID and IP on the server-side when tampering or unauthorized memory modification is detected.
 
 ### 📦 Utility & Social
 
@@ -109,8 +111,9 @@ int main() {
 
 1. **Always use Release mode**: Debug builds contain symbols that make cracking significantly easier.
 2. **String Protection**: Use `skCrypt()` for _every_ sensitive string (API Secret, App Name, etc.).
-3. **Control Flow**: Implement server-side checks and use the `client.validate_session()` method periodically.
-4. **Final Protection**: Use a commercial protector like **VMProtect** or **Themida** on your compiled `.exe` for virtualization and anti-debug layers.
+3. **Continuous Protection**: Use `client.start_protection()` after login to enable background anti-tamper monitoring and session heartbeats.
+4. **Control Flow**: Implement server-side checks and use the `client.validate_session()` method periodically.
+5. **Final Protection**: Use a commercial protector like **VMProtect** or **Themida** on your compiled `.exe` for virtualization and anti-debug layers.
 
 ---
 

@@ -286,6 +286,7 @@ namespace AuthVaultix {
             {"type", "upgrade"},
             {"username", username},
             {"key", key},
+            {"hwid", obtain_hardware_id()},
             {"sessionid", session_id},
             {"name", app_name},
             {"ownerid", owner_id}
@@ -314,6 +315,7 @@ namespace AuthVaultix {
             {"type", "forgot"},
             {"username", username},
             {"email", email},
+            {"hwid", obtain_hardware_id()},
             {"name", app_name},
             {"ownerid", owner_id},
             {"sessionid", session_id}

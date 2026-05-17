@@ -210,12 +210,7 @@ namespace AuthVaultix {
                 if (pFunc) {
                     unsigned char bytes[5];
                     memcpy(bytes, pFunc, 5);
-                    // Check for typical jump/breakpoint/call opcodes:
-                    // 0xE9 = JMP rel32
-                    // 0xCC = INT 3 (software breakpoint)
-                    // 0xFF = JMP/CALL indirect (especially FF 25 RIP-relative in x64)
-                    // 0xE8 = CALL rel32
-                    // 0x48 0xB8 = MOV RAX, imm64 (first 2 bytes of common x64 hooking patterns)
+
                     if (bytes[0] == 0xE9 || bytes[0] == 0xCC || bytes[0] == 0xE8 ||
                         (bytes[0] == 0xFF && bytes[1] == 0x25) ||
                         (bytes[0] == 0x48 && bytes[1] == 0xB8)) {

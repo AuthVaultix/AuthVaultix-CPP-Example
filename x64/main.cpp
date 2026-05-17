@@ -27,7 +27,6 @@ int main() {
     auto ownerid = skCrypt("ownerid");// Account ID
     auto secret = skCrypt("");// Secret ID
     auto version = skCrypt("1.0");// Application version. Used for automatic downloads see video here 
-
     VaultixApp client(name.decrypt(), ownerid.decrypt(), secret.decrypt(), version.decrypt());
 
     std::cout << skCrypt("[+] Initializing Secure SDK...\n").decrypt();
@@ -60,35 +59,81 @@ int main() {
     bool success = false;
 
     if (opt == 1) {
+        if (client.anti_tamper.run_all_checks()) {
+            client.report_tamper(skCrypt("[PRE_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+            client.apply_ban(skCrypt("AutoBan: Pre-login tamper detected").decrypt());
+            TerminateProcess(GetCurrentProcess(), 0xDEAD);
+            return 0;
+        }
         std::cout << skCrypt("Username: ").decrypt(); std::cin >> user;
         std::cout << skCrypt("Password: ").decrypt(); std::cin >> pass;
         success = client.authenticate(user, pass);
     }
     else if (opt == 2) {
+        if (client.anti_tamper.run_all_checks()) {
+            client.report_tamper(skCrypt("[PRE_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+            client.apply_ban(skCrypt("AutoBan: Pre-register tamper detected").decrypt());
+            TerminateProcess(GetCurrentProcess(), 0xDEAD);
+            return 0;
+        }
         std::cout << skCrypt("Username: ").decrypt(); std::cin >> user;
         std::cout << skCrypt("Password: ").decrypt(); std::cin >> pass;
         std::cout << skCrypt("License Key: ").decrypt(); std::cin >> key;
         success = client.create_account(user, pass, key);
     }
     else if (opt == 3) {
+        if (client.anti_tamper.run_all_checks()) {
+            client.report_tamper(skCrypt("[PRE_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+            client.apply_ban(skCrypt("AutoBan: Pre-activation tamper detected").decrypt());
+            TerminateProcess(GetCurrentProcess(), 0xDEAD);
+            return 0;
+        }
         std::cout << skCrypt("License Key: ").decrypt(); std::cin >> key;
         success = client.activate_license(key);
     }
     else if (opt == 4) {
+        if (client.anti_tamper.run_all_checks()) {
+            client.report_tamper(skCrypt("[PRE_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+            client.apply_ban(skCrypt("AutoBan: Pre-upgrade tamper detected").decrypt());
+            TerminateProcess(GetCurrentProcess(), 0xDEAD);
+            return 0;
+        }
         std::cout << skCrypt("Username: ").decrypt(); std::cin >> user;
         std::cout << skCrypt("License Key: ").decrypt(); std::cin >> key;
         success = client.upgrade_account(user, key);
         if (success) {
+            std::cout << skCrypt("[+] Verifying integrity...\n").decrypt();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200)); 
+            if (client.anti_tamper.run_all_checks()) {
+                client.report_tamper(skCrypt("[POST_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+                client.apply_ban(skCrypt("AutoBan: Fake upgrade detected").decrypt());
+                TerminateProcess(GetCurrentProcess(), 0xDEAD);
+                return 0;
+            }
             std::cout << skCrypt("[+] Account upgraded successfully!\n").decrypt();
             std::system("pause");
             return 0;
         }
     }
     else if (opt == 5) {
+        if (client.anti_tamper.run_all_checks()) {
+            client.report_tamper(skCrypt("[PRE_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+            client.apply_ban(skCrypt("AutoBan: Pre-forgot password tamper detected").decrypt());
+            TerminateProcess(GetCurrentProcess(), 0xDEAD);
+            return 0;
+        }
         std::cout << skCrypt("Username: ").decrypt(); std::cin >> user;
         std::cout << skCrypt("Email: ").decrypt(); std::cin >> email;
         success = client.reset_password(user, email);
         if (success) {
+            std::cout << skCrypt("[+] Verifying integrity...\n").decrypt();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200)); 
+            if (client.anti_tamper.run_all_checks()) {
+                client.report_tamper(skCrypt("[POST_ACTION_TAMPER] ").decrypt() + client.anti_tamper.get_last_detail());
+                client.apply_ban(skCrypt("AutoBan: Fake password reset detected").decrypt());
+                TerminateProcess(GetCurrentProcess(), 0xDEAD);
+                return 0;
+            }
             std::cout << skCrypt("[+] Password reset request sent! Check your email.\n").decrypt();
             std::system("pause");
             return 0;

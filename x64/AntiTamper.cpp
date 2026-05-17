@@ -178,19 +178,54 @@ namespace AuthVaultix {
     }
 
     bool AntiTamper::check_hooks() {
-
+        // 1. Check ExitProcess in kernel32.dll
         HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
-        if (!hKernel32) return false;
-
-        void* pExitProcess = GetProcAddress(hKernel32, "ExitProcess");
-        if (pExitProcess) {
-            unsigned char bytes[5];
-            memcpy(bytes, pExitProcess, 5);
-            if (bytes[0] == 0xE9 || bytes[0] == 0xCC) {
-                last_detail_ = "Hook detected on ExitProcess";
-                return true;
+        if (hKernel32) {
+            void* pExitProcess = GetProcAddress(hKernel32, "ExitProcess");
+            if (pExitProcess) {
+                unsigned char bytes[5];
+                memcpy(bytes, pExitProcess, 5);
+                if (bytes[0] == 0xE9 || bytes[0] == 0xCC || bytes[0] == 0xFF || bytes[0] == 0xE8 || 
+                    (bytes[0] == 0x48 && bytes[1] == 0xB8)) {
+                    last_detail_ = "Hook detected on ExitProcess";
+                    return true;
+                }
             }
         }
+
+        // 2. Check key WinHTTP functions in winhttp.dll
+        HMODULE hWinHttp = GetModuleHandleA("winhttp.dll");
+        if (hWinHttp) {
+            const char* winhttp_funcs[] = {
+                "WinHttpOpen",
+                "WinHttpConnect",
+                "WinHttpOpenRequest",
+                "WinHttpSendRequest",
+                "WinHttpReceiveResponse",
+                "WinHttpReadData"
+            };
+
+            for (const char* func_name : winhttp_funcs) {
+                void* pFunc = GetProcAddress(hWinHttp, func_name);
+                if (pFunc) {
+                    unsigned char bytes[5];
+                    memcpy(bytes, pFunc, 5);
+                    // Check for typical jump/breakpoint/call opcodes:
+                    // 0xE9 = JMP rel32
+                    // 0xCC = INT 3 (software breakpoint)
+                    // 0xFF = JMP/CALL indirect (especially FF 25 RIP-relative in x64)
+                    // 0xE8 = CALL rel32
+                    // 0x48 0xB8 = MOV RAX, imm64 (first 2 bytes of common x64 hooking patterns)
+                    if (bytes[0] == 0xE9 || bytes[0] == 0xCC || bytes[0] == 0xE8 ||
+                        (bytes[0] == 0xFF && bytes[1] == 0x25) ||
+                        (bytes[0] == 0x48 && bytes[1] == 0xB8)) {
+                        last_detail_ = "Hook detected on " + std::string(func_name);
+                        return true;
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
